@@ -225,8 +225,8 @@ def test_unexpected_registration_repository_failure_is_safe(monkeypatch):
         "/api/auth/register",
         json={"name": "Safe Failure", "email": "safe-failure@example.test", "password": "SecurePass123!", "role": "caregiver"},
     )
-    assert response.status_code == 500
-    assert response.json() == {"detail": "Unable to create account. Please try again."}
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Account registration is temporarily unavailable"}
 
 
 def test_profile_route_supports_get_for_logged_in_session():
