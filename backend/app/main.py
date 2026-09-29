@@ -282,8 +282,8 @@ def register(payload: RegisterRequest) -> AuthResponse:
         logger.exception("User registration schema check failed")
         raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
     except RepositoryError as exc:
-        logger.exception("User registration failed")
-        raise HTTPException(status_code=500, detail="Unable to create account. Please try again.") from exc
+        logger.exception("User registration database dependency failed")
+        raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable") from exc
     except Exception as exc:
         logger.exception("Unexpected user registration failure")
         raise HTTPException(status_code=500, detail="Unable to create account. Please try again.") from exc
