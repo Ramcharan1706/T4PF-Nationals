@@ -526,7 +526,13 @@ class SupabaseRepository(Repository):
 
     def users(self) -> list[User]:
         rows = self._all("users")
-        children = self._all("children", "id,user_id")
+        try:
+            children = self._all("children", "id,user_id")
+        except RepositoryError:
+            # Authentication/profile operations must not fail merely because
+            # optional child provisioning tables are not populated yet.
+            logger.exception("Unable to load optional child links while reading users")
+            children = []
         child_by_user = {self._uuid(r["user_id"]): self._uuid(r["id"]) for r in children if r.get("user_id")}
         return [User(id=self._uuid(r["id"]), name=r["name"], email=r["email"], username=r.get("username"), role=Role(r["role"]), organization_id=self._uuid(r["organization_id"]), child_id=child_by_user.get(self._uuid(r["id"]))) for r in rows]
 
@@ -536,7 +542,8 @@ class SupabaseRepository(Repository):
     def create_user(self, user: User, password: str) -> User:
         if not self.organization_exists(user.organization_id):
             raise OrganizationNotFoundError("The registration organization is not configured")
-        existing = [item for item in self.users() if item.email.casefold() == user.email.casefold() or (item.username and item.username.casefold() == (user.username or "").casefold())]
+        existing_rows = self._all("users", "email,username")
+        existing = [item for item in existing_rows if item.get("email", "").casefold() == user.email.casefold() or (item.get("username") and item["username"].casefold() == (user.username or "").casefold())]
         if existing:
             raise DuplicateUserError("An account with that email or username already exists")
         auth_user = self._auth_request("POST", "admin/users", json={

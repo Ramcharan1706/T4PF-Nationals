@@ -235,7 +235,11 @@ def health() -> dict[str, str | bool]:
 def register(payload: RegisterRequest) -> AuthResponse:
     identifier = payload.username or payload.email.split("@", 1)[0].strip()
     try:
-        org_id = next((user.organization_id for user in repository.users()), DEFAULT_REGISTRATION_ORGANIZATION_ID)
+        # Registration is anchored to the explicitly seeded clinic. Do not
+        # derive it from the first application user: a new database correctly
+        # has zero users, and reading the whole user/child graph can introduce
+        # an unrelated schema dependency into account creation.
+        org_id = DEFAULT_REGISTRATION_ORGANIZATION_ID
         if not repository.organization_exists(org_id):
             raise OrganizationNotFoundError("The registration organization is not configured")
     except OrganizationNotFoundError as exc:
