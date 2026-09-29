@@ -301,9 +301,12 @@ def login(payload: LoginRequest) -> AuthResponse:
     except RepositoryUnavailableError as exc:
         logger.exception("Login dependency is unavailable")
         raise HTTPException(status_code=503, detail="Sign in is temporarily unavailable") from exc
+    except RepositorySchemaError as exc:
+        logger.exception("Login schema dependency is unavailable")
+        raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
     except RepositoryError as exc:
-        logger.exception("Login failed because the authentication service rejected the request")
-        raise HTTPException(status_code=500, detail="Unable to sign in. Please try again.") from exc
+        logger.exception("Login database dependency failed")
+        raise HTTPException(status_code=503, detail="Sign in is temporarily unavailable") from exc
     except Exception as exc:
         logger.exception("Unexpected login failure")
         raise HTTPException(status_code=500, detail="Unable to sign in. Please try again.") from exc
