@@ -52,6 +52,7 @@ from app.repository import (
     DuplicateUserError,
     OrganizationNotFoundError,
     RepositoryError,
+    RepositorySchemaError,
     RepositoryUnavailableError,
     repository,
 )
@@ -225,6 +226,9 @@ def health() -> dict[str, str | bool]:
     except RepositoryUnavailableError as exc:
         logger.exception("Readiness database check failed")
         raise HTTPException(status_code=503, detail="Database is temporarily unavailable") from exc
+    except RepositorySchemaError as exc:
+        logger.exception("Readiness schema check failed")
+        raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
     except RepositoryError as exc:
         logger.exception("Readiness check failed")
         raise HTTPException(status_code=503, detail="Database is not ready") from exc
@@ -248,6 +252,9 @@ def register(payload: RegisterRequest) -> AuthResponse:
     except RepositoryUnavailableError as exc:
         logger.exception("Unable to read registration organization")
         raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable") from exc
+    except RepositorySchemaError as exc:
+        logger.exception("Registration schema check failed")
+        raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
     except RepositoryError as exc:
         logger.exception("Unable to read registration organization")
         raise HTTPException(status_code=500, detail="Unable to create account. Please try again.") from exc
@@ -271,6 +278,9 @@ def register(payload: RegisterRequest) -> AuthResponse:
     except RepositoryUnavailableError as exc:
         logger.exception("User registration is unavailable")
         raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable") from exc
+    except RepositorySchemaError as exc:
+        logger.exception("User registration schema check failed")
+        raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
     except RepositoryError as exc:
         logger.exception("User registration failed")
         raise HTTPException(status_code=500, detail="Unable to create account. Please try again.") from exc

@@ -42,6 +42,10 @@ class OrganizationNotFoundError(RepositoryError):
     """The configured registration organization is missing from the database."""
 
 
+class RepositorySchemaError(RepositoryError):
+    """A required Supabase table or schema object is missing."""
+
+
 class Repository:
     def users(self) -> list[User]: raise NotImplementedError
     def children(self) -> list[Child]: raise NotImplementedError
@@ -484,6 +488,8 @@ class SupabaseRepository(Repository):
         if response.status_code >= 400:
             detail = response.text[:500]
             lowered = detail.casefold()
+            if response.status_code == 404:
+                raise RepositorySchemaError("A required Supabase schema object is missing")
             if response.status_code == 409 or "duplicate key" in lowered or "already exists" in lowered or "already registered" in lowered:
                 raise DuplicateUserError("An account with that email or username already exists")
             if response.status_code >= 500 or response.status_code in {408, 429}:
