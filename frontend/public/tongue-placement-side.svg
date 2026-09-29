@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 220" role="img" aria-labelledby="title desc">
+  <title id="title">Tongue placement from the side</title>
+  <desc id="desc">A side profile mouth diagram showing a relaxed tongue and a small stream of air moving forward.</desc>
+  <rect width="360" height="220" rx="28" fill="#e0efeb"/>
+  <path d="M64 72 Q120 36 198 54 Q270 70 303 114 Q270 184 172 188 Q91 185 64 145Z" fill="#fffdf7" stroke="#286b62" stroke-width="5"/>
+  <path d="M82 126 Q135 91 206 111 Q238 120 270 135 Q232 163 168 167 Q110 164 82 126Z" fill="#e98d93" stroke="#bf5b70" stroke-width="4"/>
+  <path d="M90 93 Q137 68 177 76" fill="none" stroke="#d9b27c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M205 109 Q245 105 285 126" fill="none" stroke="#ef765b" stroke-width="4" stroke-dasharray="8 8"/>
+  <path d="M276 116 L291 126 L276 136" fill="none" stroke="#ef765b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="203" cy="111" r="8" fill="#f8c968" stroke="#a27020" stroke-width="3"/>
+  <text x="180" y="208" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#286b62">relaxed tongue · gentle airflow</text>
+</svg>

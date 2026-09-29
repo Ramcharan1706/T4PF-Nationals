@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 220" role="img" aria-labelledby="title desc">
+  <title id="title">Tongue placement from the front</title>
+  <desc id="desc">A friendly mouth diagram showing relaxed lips, upper teeth, and the tongue tip close behind the top teeth.</desc>
+  <rect width="360" height="220" rx="28" fill="#fff8ec"/>
+  <path d="M55 105 Q180 35 305 105 Q285 190 180 195 Q75 190 55 105Z" fill="#fcede7" stroke="#d8634f" stroke-width="5"/>
+  <path d="M88 105 Q180 63 272 105 Q252 137 180 139 Q108 137 88 105Z" fill="#fffdf7" stroke="#bf8c83" stroke-width="3"/>
+  <path d="M124 139 Q180 118 236 139 Q224 181 180 183 Q136 181 124 139Z" fill="#e98d93" stroke="#bf5b70" stroke-width="4"/>
+  <path d="M137 140 Q180 128 223 140" fill="none" stroke="#245c55" stroke-width="9" stroke-linecap="round"/>
+  <path d="M180 127 L180 82" stroke="#286b62" stroke-width="4" stroke-dasharray="7 7"/>
+  <path d="M172 91 L180 79 L188 91" fill="none" stroke="#286b62" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="180" cy="126" r="8" fill="#f8c968" stroke="#a27020" stroke-width="3"/>
+  <text x="180" y="210" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#286b62">tip near the top teeth</text>
+</svg>

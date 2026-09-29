@@ -1,0 +1,8 @@
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+# Keep the pre-seeded competition database in the distributed build.
+# Ignore ad-hoc local database copies instead.
+data/*.tmp.db
+data/*.backup.db
