@@ -46,6 +46,10 @@ class RepositorySchemaError(RepositoryError):
     """A required Supabase table or schema object is missing."""
 
 
+class RepositoryAuthConfigurationError(RepositoryError):
+    """Supabase rejected the server credential configuration."""
+
+
 class Repository:
     def users(self) -> list[User]: raise NotImplementedError
     def children(self) -> list[Child]: raise NotImplementedError
@@ -472,7 +476,9 @@ class SupabaseRepository(Repository):
             raise RuntimeError("Live mode requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
         self.base = settings.supabase_url.rstrip("/") + "/rest/v1"
         self.headers = {
-            "apikey": settings.supabase_anon_key or settings.supabase_service_role_key,
+            # These calls are server-side. The service-role key must be used
+            # consistently for both gateway authentication headers.
+            "apikey": settings.supabase_service_role_key,
             "Authorization": f"Bearer {settings.supabase_service_role_key}",
             "Content-Type": "application/json",
         }
@@ -488,6 +494,8 @@ class SupabaseRepository(Repository):
         if response.status_code >= 400:
             detail = response.text[:500]
             lowered = detail.casefold()
+            if response.status_code == 401:
+                raise RepositoryAuthConfigurationError("Supabase server credentials were rejected")
             if response.status_code == 404:
                 raise RepositorySchemaError("A required Supabase schema object is missing")
             if response.status_code == 409 or "duplicate key" in lowered or "already exists" in lowered or "already registered" in lowered:
@@ -516,6 +524,8 @@ class SupabaseRepository(Repository):
         if response.status_code >= 400:
             detail = response.text[:500]
             lowered = detail.casefold()
+            if response.status_code == 401:
+                raise RepositoryAuthConfigurationError("Supabase Auth credentials were rejected")
             if response.status_code in {409, 422} and ("already" in lowered or "exists" in lowered or "registered" in lowered or "duplicate" in lowered):
                 raise DuplicateUserError("An account with that email or username already exists")
             if response.status_code >= 500 or response.status_code in {408, 429}:

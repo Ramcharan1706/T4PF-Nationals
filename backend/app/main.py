@@ -52,6 +52,7 @@ from app.repository import (
     DuplicateUserError,
     OrganizationNotFoundError,
     RepositoryError,
+    RepositoryAuthConfigurationError,
     RepositorySchemaError,
     RepositoryUnavailableError,
     repository,
@@ -255,9 +256,12 @@ def register(payload: RegisterRequest) -> AuthResponse:
     except RepositorySchemaError as exc:
         logger.exception("Registration schema check failed")
         raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
+    except RepositoryAuthConfigurationError as exc:
+        logger.exception("Registration Supabase credentials were rejected")
+        raise HTTPException(status_code=503, detail="Supabase credentials are not configured correctly") from exc
     except RepositoryError as exc:
         logger.exception("Unable to read registration organization")
-        raise HTTPException(status_code=500, detail="Unable to create account. Please try again.") from exc
+        raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable") from exc
     user = User(
         name=payload.name.strip(),
         email=payload.email.strip(),
@@ -281,6 +285,9 @@ def register(payload: RegisterRequest) -> AuthResponse:
     except RepositorySchemaError as exc:
         logger.exception("User registration schema check failed")
         raise HTTPException(status_code=503, detail="Database schema is not initialized") from exc
+    except RepositoryAuthConfigurationError as exc:
+        logger.exception("User registration Supabase credentials were rejected")
+        raise HTTPException(status_code=503, detail="Supabase credentials are not configured correctly") from exc
     except RepositoryError as exc:
         logger.exception("User registration database dependency failed")
         raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable") from exc
