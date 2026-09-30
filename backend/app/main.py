@@ -399,7 +399,10 @@ async def create_child(payload: ChildUpdate, user: User = Depends(require_roles(
     child = Child(name=payload.name.strip(), age=payload.age, organization_id=user.organization_id, therapist_id=user.id, caregiver_ids=resolve_caregiver_ids(payload, user.organization_id))
     repository.add_child(child)
     if payload.child_username and payload.child_password:
-        child_user = User(name=child.name, email=f"{payload.child_username.strip().casefold()}@child.soundbuddy.local", username=payload.child_username.strip(), role=Role.child, organization_id=user.organization_id, child_id=child.id)
+        # Keep the public username independent from the internal Supabase Auth
+        # email. Usernames may contain characters that are invalid in an email
+        # local-part; the UUID-derived address is always valid and unique.
+        child_user = User(name=child.name, email=f"child-{child.id}@accounts.soundbuddy.app", username=payload.child_username.strip(), role=Role.child, organization_id=user.organization_id, child_id=child.id)
         account_created = False
         try:
             repository.create_user(child_user, payload.child_password)
