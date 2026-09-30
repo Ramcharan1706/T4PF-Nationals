@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     registration_organization_id: UUID = UUID("11111111-1111-1111-1111-111111111111")
     gemini_api_key: str | None = None
+    openai_api_key: str | None = None
     azure_speech_key: str | None = None
     azure_speech_region: str | None = None
     azure_speech_language: str = "en-US"

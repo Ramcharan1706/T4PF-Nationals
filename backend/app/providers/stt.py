@@ -3,6 +3,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+import httpx
+
 
 class LocalWhisperProvider:
     """Local Whisper transcription through faster-whisper."""
@@ -44,3 +46,32 @@ class LocalWhisperProvider:
             return transcript[:500]
         finally:
             Path(path).unlink(missing_ok=True)
+
+
+class OpenAIWhisperProvider:
+    """Server-side hosted transcription; the API key never reaches the browser."""
+
+    def __init__(self, api_key: str, model: str = "whisper-1") -> None:
+        self.api_key = api_key
+        self.model = model
+
+    async def transcribe(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
+        if not audio_bytes:
+            raise ValueError("Audio recording is required")
+        extension = "webm" if "webm" in content_type else "ogg" if "ogg" in content_type else "wav"
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    data={"model": self.model, "response_format": "json"},
+                    files={"file": (f"recording.{extension}", audio_bytes, content_type)},
+                )
+        except httpx.RequestError as exc:
+            raise RuntimeError("Hosted speech service is unavailable") from exc
+        if response.status_code >= 400:
+            raise RuntimeError("Hosted speech service rejected the recording")
+        transcript = response.json().get("text", "").strip()
+        if not transcript:
+            raise RuntimeError("Hosted speech service returned an empty transcript")
+        return transcript[:500]

@@ -49,7 +49,7 @@ from app.models import (
 )
 from app.providers.ai import DeterministicAIProvider, GeminiAIProvider
 from app.providers.pronunciation import LocalPronunciationScorer, MockPronunciationScorer
-from app.providers.stt import LocalWhisperProvider
+from app.providers.stt import LocalWhisperProvider, OpenAIWhisperProvider
 from app.repository import (
     DuplicateUserError,
     OrganizationNotFoundError,
@@ -184,6 +184,7 @@ class RealtimeManager:
 
 realtime = RealtimeManager()
 whisper_provider = LocalWhisperProvider(settings.whisper_model)
+hosted_whisper_provider = OpenAIWhisperProvider(settings.openai_api_key) if settings.openai_api_key else None
 
 
 def child_for_user(child_id: UUID, user: User) -> Child:
@@ -965,7 +966,10 @@ async def score_preview(
         if settings.demo_mode:
             transcription = "development transcript"
         else:
-            transcription = await whisper_provider.transcribe(audio_bytes)
+            if hosted_whisper_provider:
+                transcription = await hosted_whisper_provider.transcribe(audio_bytes, audio.content_type or "audio/webm")
+            else:
+                transcription = await whisper_provider.transcribe(audio_bytes)
 
         result = scorer.score(
             word=word.strip(),
