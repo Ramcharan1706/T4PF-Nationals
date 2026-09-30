@@ -1,9 +1,11 @@
 from datetime import date, datetime, timezone, timedelta
 from uuid import UUID, uuid4
 import logging
+import threading
+import time
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 import sys
 
@@ -64,6 +66,59 @@ from app.services.review import review_priority
 app = FastAPI(title=settings.app_name, version="1.1.0")
 settings.validate_runtime()
 logger = logging.getLogger("app")
+
+_rate_limit_lock = threading.Lock()
+_rate_limit_buckets: dict[tuple[str, str], list[float]] = {}
+_RATE_LIMITS = {
+    "/api/auth/login": (20, 60),
+    "/api/auth/register": (10, 300),
+    "/api/auth/realtime-ticket": (30, 60),
+}
+
+
+def _allow_request(path: str, client_key: str) -> tuple[bool, int]:
+    limit, window = _RATE_LIMITS[path]
+    now = time.monotonic()
+    key = (path, client_key)
+    with _rate_limit_lock:
+        recent = [stamp for stamp in _rate_limit_buckets.get(key, []) if now - stamp < window]
+        if len(recent) >= limit:
+            retry_after = max(1, int(window - (now - recent[0])))
+            _rate_limit_buckets[key] = recent
+            return False, retry_after
+        recent.append(now)
+        _rate_limit_buckets[key] = recent
+        return True, 0
+
+
+@app.middleware("http")
+async def abuse_protection(request, call_next):
+    route = request.url.path
+    if route in _RATE_LIMITS and request.method == "POST":
+        client_key = request.client.host if request.client else "unknown"
+        allowed, retry_after = _allow_request(route, client_key)
+        if not allowed:
+            response = JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again later."})
+            response.headers["Retry-After"] = str(retry_after)
+            return response
+    response = await call_next(request)
+    response.headers.setdefault("X-Request-ID", str(uuid4()))
+    return response
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), payment=()")
+    response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+    if settings.is_production:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -76,7 +131,6 @@ app.add_middleware(
 api = APIRouter(prefix="/api")
 MAX_AUDIO_BYTES = 5 * 1024 * 1024
 ALLOWED_AUDIO_PREFIXES = ("audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/aac")
-DEFAULT_REGISTRATION_ORGANIZATION_ID = UUID("11111111-1111-1111-1111-111111111111")
 
 
 class RealtimeManager:
@@ -219,7 +273,7 @@ def liveness() -> dict[str, str]:
 @api.get("/health/ready")
 def health() -> dict[str, str | bool]:
     try:
-        if not repository.organization_exists(DEFAULT_REGISTRATION_ORGANIZATION_ID):
+        if not repository.organization_exists(settings.registration_organization_id):
             raise OrganizationNotFoundError("The registration organization is not configured")
     except OrganizationNotFoundError as exc:
         logger.error("Readiness check failed: %s", exc)
@@ -244,7 +298,7 @@ def register(payload: RegisterRequest) -> AuthResponse:
         # derive it from the first application user: a new database correctly
         # has zero users, and reading the whole user/child graph can introduce
         # an unrelated schema dependency into account creation.
-        org_id = DEFAULT_REGISTRATION_ORGANIZATION_ID
+        org_id = settings.registration_organization_id
         if not repository.organization_exists(org_id):
             raise OrganizationNotFoundError("The registration organization is not configured")
     except OrganizationNotFoundError as exc:
@@ -907,14 +961,15 @@ def attempt_audio(attempt_id: UUID, user: User = Depends(current_user)) -> FileR
     child_for_user(attempt.child_id, user)
     if not attempt.audio_path:
         raise HTTPException(404, "Audio is not available")
-        try:
-            signed_url = repository.signed_audio_url(attempt.audio_path)
-        except RepositoryUnavailableError as exc:
-            logger.exception("Audio signing service is unavailable")
-            raise HTTPException(503, "Audio storage is temporarily unavailable") from exc
-        except RepositoryError as exc:
-            logger.exception("Audio signing failed")
-            raise HTTPException(503, "Audio is temporarily unavailable") from exc
+    signed_url = None
+    try:
+        signed_url = repository.signed_audio_url(attempt.audio_path)
+    except RepositoryUnavailableError as exc:
+        logger.exception("Audio signing service is unavailable")
+        raise HTTPException(503, "Audio storage is temporarily unavailable") from exc
+    except RepositoryError as exc:
+        logger.exception("Audio signing failed")
+        raise HTTPException(503, "Audio is temporarily unavailable") from exc
     if signed_url:
         return RedirectResponse(signed_url)
     root = Path(settings.audio_storage_path or (Path(__file__).resolve().parents[1] / "data" / "audio")).resolve()
@@ -934,7 +989,12 @@ async def ai_guidance(payload: dict, user: User = Depends(require_roles(Role.the
     child = child_for_user(child_id, user)
     plan = active_plan_for(child.id)
     raw_words = payload.get("selectedWords", [])
-    words = [str(w).strip()[:40] for w in raw_words if isinstance(w, str) and str(w).strip()][:8] if isinstance(raw_words, list) else []
+    allowed_words = {word.strip().casefold() for target in plan.targets for word in target.words}
+    words = [
+        str(word).strip()[:40]
+        for word in raw_words
+        if isinstance(word, str) and str(word).strip().casefold() in allowed_words
+    ][:8] if isinstance(raw_words, list) else []
     args = {
         "child_name": child.name,
         "target_sound": plan.targets[0].sound,
@@ -956,9 +1016,9 @@ async def ai_guidance(payload: dict, user: User = Depends(require_roles(Role.the
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token", "")
+    ticket = websocket.query_params.get("ticket", "")
     try:
-        user_id = decode_realtime_ticket(token)
+        user_id = decode_realtime_ticket(ticket)
     except ValueError:
         await websocket.close(code=1008)
         return

@@ -678,18 +678,23 @@ class SupabaseRepository(Repository):
         return placement
 
     def add_plan(self, plan: TherapyPlan) -> TherapyPlan:
-        self._request("PATCH", "therapy_plans", params={"child_id":f"eq.{plan.child_id}", "active":"eq.true"}, json={"active":False}, prefer="return=minimal")
-        row=self._request("POST", "therapy_plans", json={"id":str(plan.id),"child_id":str(plan.child_id),"therapist_id":str(plan.therapist_id),"tier":plan.tier.value,"cadence_per_week":plan.cadence_per_week,"review_date":plan.review_date.isoformat(),"cue":plan.cue,"adaptive_recommended_tier":plan.adaptive_recommended_tier.value,"therapist_override_tier":plan.therapist_override_tier.value if plan.therapist_override_tier else None,"active":True})[0]
-        for target in plan.targets:
-            word_rows=self._request("GET","words",params={
-                "select":"id,word,target_sound,word_position",
-                "word":f"in.({','.join(target.words)})",
-                "target_sound":f"eq.{target.sound}",
-                "word_position":f"eq.{target.position}",
-                "active":"eq.true",
-            })
-            word_ids=[r["id"] for r in word_rows]
-            self._request("POST","therapy_plan_targets",json={"therapy_plan_id":str(plan.id),"target_sound":target.sound,"position":target.position,"word_ids":word_ids})
+        self._request("POST", "rpc/create_therapy_plan_transaction", json={
+            "p_plan": {
+                "id": str(plan.id),
+                "child_id": str(plan.child_id),
+                "therapist_id": str(plan.therapist_id),
+                "tier": plan.tier.value,
+                "cadence_per_week": plan.cadence_per_week,
+                "review_date": plan.review_date.isoformat(),
+                "cue": plan.cue,
+                "adaptive_recommended_tier": plan.adaptive_recommended_tier.value,
+                "therapist_override_tier": plan.therapist_override_tier.value if plan.therapist_override_tier else None,
+            },
+            "p_targets": [
+                {"target_sound": target.sound, "position": target.position, "words": target.words}
+                for target in plan.targets
+            ],
+        }, prefer="return=minimal")
         return plan
 
     def add_child(self, child: Child) -> Child:
@@ -707,7 +712,10 @@ class SupabaseRepository(Repository):
                 "therapist_override_tier": plan.therapist_override_tier.value if plan.therapist_override_tier else None,
                 "updated_at": plan.updated_at.isoformat(),
             },
-            "p_targets": [target.model_dump(mode="json") for target in plan.targets],
+            "p_targets": [
+                {"target_sound": target.sound, "position": target.position, "words": target.words}
+                for target in plan.targets
+            ],
         }, prefer="return=minimal")
         return plan
 
@@ -737,7 +745,15 @@ class SupabaseRepository(Repository):
         return attempt
 
     def update_child(self, child: Child) -> Child:
-        self._request("PATCH","children",params={"id":f"eq.{child.id}"},json={"mastery":child.mastery,"adherence":child.adherence,"last_practice":child.last_practice.isoformat() if child.last_practice else None})
+        self._request("PATCH", "children", params={"id": f"eq.{child.id}"}, json={
+            "name": child.name,
+            "age": child.age,
+            "therapist_id": str(child.therapist_id),
+            "mastery": child.mastery,
+            "adherence": child.adherence,
+            "last_practice": child.last_practice.isoformat() if child.last_practice else None,
+            "active": child.active,
+        })
         self._request("DELETE", "caregiver_child", params={"child_id": f"eq.{child.id}"}, prefer="return=minimal")
         for caregiver_id in child.caregiver_ids:
             self._request("POST", "caregiver_child", json={"child_id": str(child.id), "caregiver_id": str(caregiver_id)})

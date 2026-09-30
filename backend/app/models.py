@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 class Role(StrEnum):
@@ -35,6 +35,14 @@ class LoginRequest(BaseModel):
     username: str | None = Field(default=None, min_length=3, max_length=80)
     password: str = Field(min_length=8, max_length=256)
 
+    @field_validator("email", "username", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized.casefold() if "@" in normalized else normalized
+
     @model_validator(mode="after")
     def validate_identifier(self):
         if not self.email and not self.username:
@@ -49,10 +57,26 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=256)
     role: Role = Role.caregiver
 
+    @field_validator("name", "email", "username", mode="before")
+    @classmethod
+    def normalize_registration_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized.casefold() if "@" in normalized else normalized
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_shape(cls, value: str) -> str:
+        local, separator, domain = value.partition("@")
+        if not separator or not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("A valid email address is required")
+        return value
+
     @model_validator(mode="after")
     def validate_public_role(self):
-        if self.role != Role.caregiver:
-            raise ValueError("Only caregiver accounts can register publicly")
+        if self.role not in {Role.caregiver, Role.therapist}:
+            raise ValueError("Only caregiver and therapist accounts can register publicly")
         return self
 
 

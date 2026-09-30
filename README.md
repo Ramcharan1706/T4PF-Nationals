@@ -69,7 +69,7 @@ Set `DATABASE_BACKEND=sqlite` for local development or
 strong `JWT_SECRET`, Supabase credentials, and a production CORS origin.
 
 Before deploying Render, run migrations `001_mvp_schema.sql` through
-`006_registration_hardening.sql` in Supabase SQL Editor, in order. Render does not execute
+`008_production_integrity.sql` in Supabase SQL Editor, in order. Render does not execute
 these migration files automatically.
 
 Vercel must define `VITE_API_URL` as the deployed Render URL; otherwise browser
@@ -88,8 +88,9 @@ Realtime, and never expose `SUPABASE_SERVICE_ROLE_KEY` or `JWT_SECRET` to the br
 
 ## Production verification
 
-After deployment, check `/api/health/ready` on the Render URL. It must report
+After deployment, check `/api/health/live` and `/api/health/ready` on the Render URL. The
+liveness check must not require the database; readiness must report
 `"database": "supabase"` and `"demo_mode": false`. Then verify registration,
 login, child creation, an attempt submission, and a care-team message. Public
-registration creates caregiver accounts; therapists must be provisioned through
-an administrative workflow.
+registration creates caregiver and therapist accounts; child and admin accounts
+must be provisioned through authorized workflows.

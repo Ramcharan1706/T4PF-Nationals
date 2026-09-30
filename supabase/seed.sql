@@ -19,4 +19,4 @@ values
 ('red', array['/r/'], '/r/', 'Initial', 1, 'Everyday', '6-8', 'Whole Word'),
 ('leaf', array['/l/'], '/l/', 'Initial', 1, 'Everyday', '5-7', 'Whole Word'),
 ('thumb', array['/th/'], '/th/', 'Initial', 1, 'Everyday', '6-8', 'Whole Word')
-on conflict do nothing;
+on conflict (word, target_sound, word_position) do nothing;

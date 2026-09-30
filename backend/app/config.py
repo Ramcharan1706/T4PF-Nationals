@@ -1,3 +1,6 @@
+from uuid import UUID
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +17,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
+    registration_organization_id: UUID = UUID("11111111-1111-1111-1111-111111111111")
     gemini_api_key: str | None = None
     azure_speech_key: str | None = None
     azure_speech_region: str | None = None
@@ -23,6 +27,16 @@ class Settings(BaseSettings):
     cors_origin_regex: str | None = r"^https://([a-z0-9-]+\.)?ngrok(-free)?\.(dev|app)$"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("supabase_url", "supabase_anon_key", "supabase_service_role_key", mode="before")
+    @classmethod
+    def strip_supabase_values(cls, value: str | None) -> str | None:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("jwt_secret", "cors_origins", mode="before")
+    @classmethod
+    def strip_config_values(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -45,6 +59,8 @@ class Settings(BaseSettings):
             raise RuntimeError("Production deployments require SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY")
         if self.is_production and not any(origin.startswith("https://") for origin in self.cors_origin_list):
             raise RuntimeError("Production CORS_ORIGINS must include an HTTPS origin")
+        if self.is_production and self.registration_organization_id.int == 0:
+            raise RuntimeError("REGISTRATION_ORGANIZATION_ID must be configured in production")
 
 
 settings = Settings()

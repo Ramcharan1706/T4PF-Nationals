@@ -332,6 +332,7 @@ function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
+  const [registrationRole, setRegistrationRole] = useState<"caregiver" | "therapist">("caregiver");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -363,7 +364,7 @@ function LoginPage() {
     setLoading(true);
     try {
       const profile = mode === "register"
-        ? await signUp({ name: name.trim(), email: email.trim(), password, role: "caregiver", username: username.trim() || undefined })
+        ? await signUp({ name: name.trim(), email: email.trim(), password, role: registrationRole, username: username.trim() || undefined })
         : await signIn(email.trim(), password);
       window.location.replace(roleDestination(profile.role));
     } catch (err) {
@@ -417,6 +418,7 @@ function LoginPage() {
             {mode === "register" && <>
               <label className="block"><span className="sb-kicker mb-2 block">Full name</span><input className="sb-input" type="text" value={name} onChange={event => setName(event.target.value)} /></label>
               <label className="block"><span className="sb-kicker mb-2 block">Username</span><input className="sb-input" type="text" value={username} onChange={event => setUsername(event.target.value)} placeholder="Optional - defaults to your email prefix" /></label>
+              <label className="block"><span className="sb-kicker mb-2 block">Account type</span><select className="sb-input" value={registrationRole} onChange={event => setRegistrationRole(event.target.value as "caregiver" | "therapist")}><option value="caregiver">Caregiver</option><option value="therapist">Therapist</option></select></label>
             </>}
             <label className="block"><span className="sb-kicker mb-2 block">Email</span><input className="sb-input" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
             <label className="block"><span className="sb-kicker mb-2 block">Password</span><input className="sb-input" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} onKeyDown={event => { if (event.key === "Enter") submit(); }} /></label>

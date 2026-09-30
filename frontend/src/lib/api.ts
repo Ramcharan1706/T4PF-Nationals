@@ -1,12 +1,9 @@
 const configuredApiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-const browserIsLocal = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-const configuredApiIsLocal = /^(https?:\/\/)(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(configuredApiBase);
+// Local Vite development uses the configured proxy. Production builds must
+// receive an explicit backend origin and must never fall back to Vercel /api.
+const API_BASE = configuredApiBase || (import.meta.env.DEV ? "" : null);
 
-// A localhost URL points at the visitor's machine when the frontend is
-// opened through ngrok, so use the same-origin Vite proxy in that case.
-const API_BASE = configuredApiBase && (!configuredApiIsLocal || browserIsLocal) ? configuredApiBase : "";
-
-if (!API_BASE && !browserIsLocal && !configuredApiIsLocal) {
+if (API_BASE === null) {
   throw new Error("VITE_API_URL is not configured");
 }
 

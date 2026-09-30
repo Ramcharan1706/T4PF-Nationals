@@ -1,5 +1,6 @@
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -176,10 +177,20 @@ def test_user_can_create_account_with_role_and_login():
     assert login_response.json()["user"]["role"] == "caregiver"
 
 
-def test_public_registration_cannot_grant_therapist_role():
+def test_public_registration_supports_therapist_role():
     response = client.post(
         "/api/auth/register",
-        json={"name": "Unapproved Therapist", "email": "unapproved@example.test", "password": "SecurePass123!", "role": "therapist"},
+        json={"name": "Approved Therapist", "email": "approved-therapist@example.test", "password": "SecurePass123!", "role": "therapist"},
+    )
+    assert response.status_code == 201
+    assert response.json()["user"]["role"] == "therapist"
+
+
+@pytest.mark.parametrize("role", ["child", "admin"])
+def test_public_registration_rejects_privileged_or_child_roles(role):
+    response = client.post(
+        "/api/auth/register",
+        json={"name": "Blocked Account", "email": f"blocked-{role}@example.test", "password": "SecurePass123!", "role": role},
     )
     assert response.status_code == 422
 
