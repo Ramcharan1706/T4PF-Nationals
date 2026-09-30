@@ -215,7 +215,7 @@ class InMemoryRepository(Repository):
             TherapyPlan(child_id=child_ids[1], therapist_id=therapist.id, targets=[PlanTarget(sound="/r/", words=["red", "rain", "run", "rocket"], position="Initial")], tier=Tier.isolation, cadence_per_week=4, review_date=date.today()+timedelta(days=3), adaptive_recommended_tier=Tier.isolation),
             TherapyPlan(child_id=child_ids[2], therapist_id=therapist2.id, targets=[PlanTarget(sound="/l/", words=["leaf", "lamp", "lion", "ball"], position="Initial")], tier=Tier.sentence, cadence_per_week=5, review_date=date.today()+timedelta(days=14), adaptive_recommended_tier=Tier.sentence),
         ])
-        words = [("sun","/s/","Initial"),("sock","/s/","Initial"),("soap","/s/","Initial"),("snake","/s/","Initial"),("sand","/s/","Initial"),("messy","/s/","Medial"),("pencil","/s/","Medial"),("bus","/s/","Final"),("house","/s/","Final"),("mouse","/s/","Final"),("red","/r/","Initial"),("rain","/r/","Initial"),("rocket","/r/","Initial"),("run","/r/","Initial"),("rabbit","/r/","Initial"),("car","/r/","Final"),("door","/r/","Final"),("floor","/r/","Final"),("leaf","/l/","Initial"),("lamp","/l/","Initial"),("lion","/l/","Initial"),("ball","/l/","Final"),("bell","/l/","Final"),("yellow","/l/","Medial"),("thumb","/th/","Initial"),("three","/th/","Initial"),("think","/th/","Initial"),("bath","/th/","Final"),("teeth","/th/","Final"),("earth","/th/","Final")]
+        words = [("sun","/s/","Initial"),("sock","/s/","Initial"),("soap","/s/","Initial"),("snake","/s/","Initial"),("sand","/s/","Initial"),("messy","/s/","Medial"),("pencil","/s/","Medial"),("bus","/s/","Final"),("house","/s/","Final"),("mouse","/s/","Final"),("red","/r/","Initial"),("rain","/r/","Initial"),("rocket","/r/","Initial"),("run","/r/","Initial"),("rabbit","/r/","Initial"),("car","/r/","Final"),("door","/r/","Final"),("floor","/r/","Final"),("leaf","/l/","Initial"),("lamp","/l/","Initial"),("lion","/l/","Initial"),("ball","/l/","Final"),("bell","/l/","Final"),("yellow","/l/","Medial"),("thumb","/th/","Initial"),("three","/th/","Initial"),("think","/th/","Initial"),("birthday","/th/","Medial"),("bath","/th/","Final"),("teeth","/th/","Final"),("earth","/th/","Final")]
         for word, sound, position in words:
             self._curriculum.append(CurriculumWord(word=word, phonemes=[sound], target_sound=sound, word_position=position, syllable_count=1 if len(word)<7 else 2, difficulty="Everyday", age_band="5-9", tier=Tier.whole_word))
         self._tongue_placements.extend([
@@ -678,23 +678,43 @@ class SupabaseRepository(Repository):
         return placement
 
     def add_plan(self, plan: TherapyPlan) -> TherapyPlan:
-        self._request("POST", "rpc/create_therapy_plan_transaction", json={
+        payload = {
             "p_plan": {
-                "id": str(plan.id),
-                "child_id": str(plan.child_id),
-                "therapist_id": str(plan.therapist_id),
-                "tier": plan.tier.value,
-                "cadence_per_week": plan.cadence_per_week,
-                "review_date": plan.review_date.isoformat(),
-                "cue": plan.cue,
+                "id": str(plan.id), "child_id": str(plan.child_id), "therapist_id": str(plan.therapist_id),
+                "tier": plan.tier.value, "cadence_per_week": plan.cadence_per_week,
+                "review_date": plan.review_date.isoformat(), "cue": plan.cue,
                 "adaptive_recommended_tier": plan.adaptive_recommended_tier.value,
                 "therapist_override_tier": plan.therapist_override_tier.value if plan.therapist_override_tier else None,
             },
-            "p_targets": [
-                {"target_sound": target.sound, "position": target.position, "words": target.words}
-                for target in plan.targets
-            ],
-        }, prefer="return=minimal")
+            "p_targets": [{"target_sound": target.sound, "position": target.position, "words": target.words} for target in plan.targets],
+        }
+        try:
+            self._request("POST", "rpc/create_therapy_plan_transaction", json=payload, prefer="return=minimal")
+        except RepositorySchemaError:
+            # Compatibility for deployments that have not applied migration 008
+            # yet. The migration remains required for atomic plan writes.
+            self._request("PATCH", "therapy_plans", params={"child_id": f"eq.{plan.child_id}", "active": "eq.true"}, json={"active": False}, prefer="return=minimal")
+            try:
+                self._request("POST", "therapy_plans", json={
+                    "id": str(plan.id), "child_id": str(plan.child_id), "therapist_id": str(plan.therapist_id),
+                    "tier": plan.tier.value, "cadence_per_week": plan.cadence_per_week,
+                    "review_date": plan.review_date.isoformat(), "cue": plan.cue,
+                    "adaptive_recommended_tier": plan.adaptive_recommended_tier.value,
+                    "therapist_override_tier": plan.therapist_override_tier.value if plan.therapist_override_tier else None,
+                    "active": True,
+                }, prefer="return=minimal")
+                for target in plan.targets:
+                    rows = self._request("GET", "words", params={
+                        "select": "id", "word": f"in.({','.join(target.words)})",
+                        "target_sound": f"eq.{target.sound}", "word_position": f"eq.{target.position}", "active": "eq.true",
+                    })
+                    self._request("POST", "therapy_plan_targets", json={
+                        "therapy_plan_id": str(plan.id), "target_sound": target.sound,
+                        "position": target.position, "word_ids": [row["id"] for row in rows],
+                    })
+            except Exception:
+                self._request("DELETE", "therapy_plans", params={"id": f"eq.{plan.id}"}, prefer="return=minimal")
+                raise
         return plan
 
     def add_child(self, child: Child) -> Child:

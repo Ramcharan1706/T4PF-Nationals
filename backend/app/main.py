@@ -76,6 +76,12 @@ _RATE_LIMITS = {
 }
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception(request, exc):
+    logger.exception("Unhandled application error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "An unexpected server error occurred."})
+
+
 def _allow_request(path: str, client_key: str) -> tuple[bool, int]:
     limit, window = _RATE_LIMITS[path]
     now = time.monotonic()
@@ -252,7 +258,12 @@ def resolve_caregiver_ids(payload: ChildUpdate, organization_id: UUID) -> list[U
 
 
 def log(user: User, action: str, resource_type: str, resource_id: UUID | None = None) -> None:
-    repository.add_audit(AuditEvent(organization_id=user.organization_id, actor_user_id=user.id, action=action, resource_type=resource_type, resource_id=resource_id))
+    try:
+        repository.add_audit(AuditEvent(organization_id=user.organization_id, actor_user_id=user.id, action=action, resource_type=resource_type, resource_id=resource_id))
+    except RepositoryError:
+        # Audit persistence must not turn a committed user action into a
+        # misleading failure. The failure remains visible in server logs.
+        logger.exception("Audit event persistence failed for %s", action)
 
 
 def cleanup_audio(object_name: str | None) -> None:
@@ -388,8 +399,8 @@ def realtime_ticket(user: User = Depends(current_user)) -> dict[str, str]:
 
 
 @api.get("/therapists/me/caseload")
-def caseload(user: User = Depends(require_roles(Role.therapist))) -> list[Child]:
-    return [child for child in repository.children() if child.active and child.therapist_id == user.id]
+def caseload(user: User = Depends(require_roles(Role.therapist, Role.admin))) -> list[Child]:
+    return [child for child in repository.children() if child.active and (user.role == Role.admin and child.organization_id == user.organization_id or child.therapist_id == user.id)]
 
 
 @api.post("/children", response_model=Child, status_code=201)
@@ -542,7 +553,17 @@ async def create_plan(child_id: UUID, payload: PlanUpdate, user: User = Depends(
         adaptive_recommended_tier=adaptive.recommended_tier,
         therapist_override_tier=payload.therapist_override_tier,
     )
-    repository.add_plan(plan)
+    try:
+        repository.add_plan(plan)
+    except RepositoryUnavailableError as exc:
+        logger.exception("Therapy plan persistence is unavailable")
+        raise HTTPException(503, "Therapy plan storage is temporarily unavailable") from exc
+    except RepositorySchemaError as exc:
+        logger.exception("Therapy plan schema is not ready")
+        raise HTTPException(503, "Therapy plan database migration is required") from exc
+    except RepositoryError as exc:
+        logger.exception("Therapy plan persistence failed")
+        raise HTTPException(503, "Unable to save the therapy plan") from exc
     log(user, "Created therapy plan", "therapy_plan", plan.id)
     await realtime.broadcast("therapy_plan_changed", {"child_id": str(plan.child_id), "plan_id": str(plan.id)}, organization_id=user.organization_id, child_id=plan.child_id)
     return plan
@@ -591,7 +612,10 @@ async def deactivate_child(child_id: UUID, user: User = Depends(require_roles(Ro
 
 
 @api.get("/therapy-plans")
-def list_plans(user: User = Depends(require_roles(Role.therapist))) -> list[TherapyPlan]:
+def list_plans(user: User = Depends(require_roles(Role.therapist, Role.admin))) -> list[TherapyPlan]:
+    if user.role == Role.admin:
+        organization_child_ids = {child.id for child in repository.children() if child.organization_id == user.organization_id}
+        return [plan for plan in repository.plans() if plan.child_id in organization_child_ids]
     return [plan for plan in repository.plans() if plan.therapist_id == user.id]
 
 
@@ -783,15 +807,19 @@ def export_child_data(child_id: UUID, user: User = Depends(current_user)) -> dic
 
 
 @api.get("/audit-events", response_model=list[AuditEvent])
-def audit_events(user: User = Depends(require_roles(Role.therapist, Role.admin))) -> list[AuditEvent]:
+def audit_events(user: User = Depends(require_roles(Role.admin))) -> list[AuditEvent]:
+        attempts_for_child = sorted(
+            (a for a in repository.attempts() if a.child_id == child_id),
+            key=lambda attempt: attempt.created_at,
+        )
     return [event for event in repository.audits() if event.organization_id == user.organization_id]
 
 
 @api.get("/review-queue")
-def review_queue(user: User = Depends(require_roles(Role.therapist))) -> list[dict]:
+def review_queue(user: User = Depends(require_roles(Role.therapist, Role.admin))) -> list[dict]:
     result: list[dict] = []
     for child in repository.children():
-        if child.therapist_id != user.id:
+        if child.organization_id != user.organization_id or (user.role != Role.admin and child.therapist_id != user.id):
             continue
         priority = review_priority(child, repository.attempts())
         plan = next((p for p in repository.plans() if p.child_id == child.id and p.active), None)
