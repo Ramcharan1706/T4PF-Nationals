@@ -841,6 +841,15 @@ function ReviewPage() {
 }
 
 function ChildPractice() {
+  type BrowserRecognition = {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+    onerror: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+  };
   const [location] = useLocation();
   const selected = getChildProfile(
     (location.match(/\/app\/therapist\/children\/([^/?]+)/)?.[1] || getSelectedChildFromLocation()).toLowerCase(),
@@ -866,6 +875,8 @@ function ChildPractice() {
   const [guidanceView, setGuidanceView] = useState<"front" | "side">("front");
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const browserTranscriptRef = useRef("");
   const chunksRef = useRef<Blob[]>([]);
   const word = practiceItems[index]?.word;
 
@@ -970,7 +981,7 @@ function ChildPractice() {
     }
   };
 
-  const finishRecording = async (blob: Blob) => {
+  const finishRecording = async (blob: Blob, browserTranscript = "") => {
     if (!child || !sessionId || !word || blob.size === 0) return;
     setRecording(false);
     setError("");
@@ -988,6 +999,7 @@ function ChildPractice() {
       form.append("word", word);
       form.append("target_sound", targetSound);
       form.append("word_position", wordPosition);
+      if (browserTranscript.trim()) form.append("client_transcription", browserTranscript.trim());
       form.append("audio", blob, `${word}.wav`);
 
       const score = await apiFetchForm<{
@@ -1039,6 +1051,21 @@ function ChildPractice() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
+      browserTranscriptRef.current = "";
+      const recognitionConstructor = (window as unknown as { SpeechRecognition?: new () => BrowserRecognition; webkitSpeechRecognition?: new () => BrowserRecognition }).SpeechRecognition
+        || (window as unknown as { webkitSpeechRecognition?: new () => BrowserRecognition }).webkitSpeechRecognition;
+      if (recognitionConstructor) {
+        const recognition = new recognitionConstructor();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+        recognition.onresult = event => {
+          browserTranscriptRef.current = Array.from({ length: event.results.length }, (_, resultIndex) => event.results[resultIndex][0].transcript).join(" ");
+        };
+        recognition.onerror = () => undefined;
+        recognitionRef.current = recognition;
+        try { recognition.start(); } catch { /* recording still works with local Whisper */ }
+      }
       chunksRef.current = [];
       recorderRef.current = recorder;
 
@@ -1048,8 +1075,11 @@ function ChildPractice() {
 
       recorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop());
+        recognitionRef.current?.stop();
+        recognitionRef.current = null;
         void finishRecording(
           new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }),
+          browserTranscriptRef.current,
         );
         recorderRef.current = null;
       };

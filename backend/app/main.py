@@ -934,6 +934,7 @@ async def score_preview(
     word: str = Form(...),
     target_sound: str = Form("/s/"),
     word_position: str = Form("Initial"),
+    client_transcription: str | None = Form(default=None, max_length=500),
     audio: UploadFile | None = File(default=None),
     user: User = Depends(require_roles(Role.child, Role.caregiver)),
 ):
@@ -966,10 +967,17 @@ async def score_preview(
         if settings.demo_mode:
             transcription = "development transcript"
         else:
-            if hosted_whisper_provider:
-                transcription = await hosted_whisper_provider.transcribe(audio_bytes, audio.content_type or "audio/webm")
-            else:
-                transcription = await whisper_provider.transcribe(audio_bytes)
+            try:
+                if hosted_whisper_provider:
+                    transcription = await hosted_whisper_provider.transcribe(audio_bytes, audio.content_type or "audio/webm")
+                else:
+                    transcription = await whisper_provider.transcribe(audio_bytes)
+            except Exception:
+                # Browser SpeechRecognition is a no-key fallback for devices
+                # where Render cannot load the local Whisper model.
+                transcription = (client_transcription or "").strip()[:500]
+                if not transcription:
+                    raise
 
         result = scorer.score(
             word=word.strip(),
