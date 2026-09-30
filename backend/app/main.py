@@ -773,7 +773,10 @@ def get_consent(child_id: UUID, user: User = Depends(require_roles(Role.therapis
 @api.get("/children/{child_id}/progress")
 def progress(child_id: UUID, user: User = Depends(current_user)) -> Progress:
     child = child_for_user(child_id, user)
-    attempts_for_child = [a for a in repository.attempts() if a.child_id == child_id]
+    attempts_for_child = sorted(
+        (a for a in repository.attempts() if a.child_id == child_id),
+        key=lambda attempt: attempt.created_at,
+    )
     scores = [a.score for a in attempts_for_child]
     recent = scores[-5:]
     plan = next((p for p in repository.plans() if p.child_id == child_id and p.active), None)
@@ -808,10 +811,6 @@ def export_child_data(child_id: UUID, user: User = Depends(current_user)) -> dic
 
 @api.get("/audit-events", response_model=list[AuditEvent])
 def audit_events(user: User = Depends(require_roles(Role.admin))) -> list[AuditEvent]:
-        attempts_for_child = sorted(
-            (a for a in repository.attempts() if a.child_id == child_id),
-            key=lambda attempt: attempt.created_at,
-        )
     return [event for event in repository.audits() if event.organization_id == user.organization_id]
 
 
