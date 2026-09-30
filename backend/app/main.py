@@ -183,6 +183,7 @@ class RealtimeManager:
 
 
 realtime = RealtimeManager()
+whisper_provider = LocalWhisperProvider(settings.whisper_model)
 
 
 def child_for_user(child_id: UUID, user: User) -> Child:
@@ -964,7 +965,7 @@ async def score_preview(
         if settings.demo_mode:
             transcription = "development transcript"
         else:
-            transcription = await LocalWhisperProvider(settings.whisper_model).transcribe(audio_bytes)
+            transcription = await whisper_provider.transcribe(audio_bytes)
 
         result = scorer.score(
             word=word.strip(),

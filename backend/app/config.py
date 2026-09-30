@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     azure_speech_key: str | None = None
     azure_speech_region: str | None = None
     azure_speech_language: str = "en-US"
-    whisper_model: str = "base"
+    # tiny keeps CPU/RAM usage practical on the Render free instance. Larger
+    # models can be selected explicitly with WHISPER_MODEL when resources allow.
+    whisper_model: str = "tiny"
     cors_origins: str = "http://localhost:5173"
     cors_origin_regex: str | None = r"^https://([a-z0-9-]+\.)?ngrok(-free)?\.(dev|app)$"
 
