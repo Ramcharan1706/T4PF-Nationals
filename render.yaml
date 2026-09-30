@@ -10,6 +10,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: DATABASE_BACKEND
         value: supabase
       - key: DEMO_MODE
